@@ -1,0 +1,5 @@
+{
+  "name": "Supabase Prompt & Project Viewer",
+  "description": "An application to send prompts to Supabase and preview React+Vite projects from ZIP files using in-memory unzipping.",
+  "requestFramePermissions": []
+}
