@@ -6,12 +6,6 @@ export interface PromptEntry {
   created_at?: string;
 }
 
-export interface ProjectFile {
-  name: string;
-  content: string | Uint8Array;
-  type: 'file' | 'directory';
-}
-
 export interface ProjectData {
   id: string;
   files: string[];
@@ -36,4 +30,5 @@ export interface ProjectState {
   status: 'idle' | 'loading' | 'ready' | 'error';
   buildStatus: 'idle' | 'installing' | 'running';
   terminalLogs: TerminalLog[];
+  viewMode: 'code' | 'preview';
 }
