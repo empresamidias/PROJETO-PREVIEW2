@@ -65,11 +65,46 @@ export const downloadAndUnzip = async (projectId: string, fileName: string): Pro
   }
 };
 
-export const validateProject = (files: Record<string, VirtualFile>): boolean => {
-  const filePaths = Object.keys(files);
-  const hasIndex = filePaths.some(p => p.endsWith('index.html'));
-  const hasPackageJson = filePaths.some(p => p.endsWith('package.json'));
-  const hasViteConfig = filePaths.some(p => p.toLowerCase().includes('vite.config'));
-  
-  return hasIndex && hasPackageJson && hasViteConfig;
+/**
+ * Escreve os arquivos virtuais em uma pasta física selecionada pelo usuário.
+ */
+export const writeFilesToLocal = async (
+  files: Record<string, VirtualFile>,
+  onProgress: (msg: string) => void
+): Promise<string> => {
+  if (!('showDirectoryPicker' in window)) {
+    throw new Error('Seu navegador não suporta escrita em pastas locais. Use Chrome ou Edge.');
+  }
+
+  try {
+    const directoryHandle = await (window as any).showDirectoryPicker({
+      mode: 'readwrite'
+    });
+
+    onProgress(`Pasta selecionada: ${directoryHandle.name}. Iniciando sincronização...`);
+
+    for (const [path, file] of Object.entries(files)) {
+      const parts = path.split('/');
+      let currentHandle = directoryHandle;
+
+      // Criar subpastas
+      for (let i = 0; i < parts.length - 1; i++) {
+        currentHandle = await currentHandle.getDirectoryHandle(parts[i], { create: true });
+      }
+
+      // Criar arquivo
+      const fileName = parts[parts.length - 1];
+      const fileHandle = await currentHandle.getFileHandle(fileName, { create: true });
+      const writable = await fileHandle.createWritable();
+      await writable.write(file.content);
+      await writable.close();
+      
+      onProgress(`Escrito: ${path}`);
+    }
+
+    return directoryHandle.name;
+  } catch (error: any) {
+    if (error.name === 'AbortError') throw new Error('Operação cancelada pelo usuário.');
+    throw error;
+  }
 };
