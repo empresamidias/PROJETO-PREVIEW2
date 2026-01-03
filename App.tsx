@@ -1,20 +1,25 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { sendPrompt } from './services/supabaseService';
 import { fetchProjectsList, downloadAndUnzip, validateProject } from './services/projectService';
-import { ProjectData, ProjectState, VirtualFile } from './types';
+import { ProjectData, ProjectState, VirtualFile, TerminalLog } from './types';
 import { FileExplorer } from './components/FileExplorer';
 import { 
   Send, 
   Package, 
   RefreshCw, 
   AlertCircle, 
-  Terminal, 
+  Terminal as TerminalIcon, 
   Layout, 
   Code,
   ExternalLink,
   Github,
-  Zap
+  Zap,
+  Play,
+  Square,
+  Download,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 
 // Fixed session ID provided by the user
@@ -33,9 +38,14 @@ const App: React.FC = () => {
   const [activeProject, setActiveProject] = useState<ProjectState>({
     id: '',
     files: {},
-    status: 'idle'
+    status: 'idle',
+    buildStatus: 'idle',
+    terminalLogs: []
   });
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const [isTerminalOpen, setIsTerminalOpen] = useState(false);
+  
+  const terminalRef = useRef<HTMLDivElement>(null);
 
   const loadProjects = useCallback(async () => {
     setIsLoadingProjects(true);
@@ -53,6 +63,59 @@ const App: React.FC = () => {
   useEffect(() => {
     loadProjects();
   }, [loadProjects]);
+
+  useEffect(() => {
+    if (terminalRef.current) {
+      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+    }
+  }, [activeProject.terminalLogs]);
+
+  const addLog = (text: string, type: TerminalLog['type'] = 'info') => {
+    setActiveProject(prev => ({
+      ...prev,
+      terminalLogs: [
+        ...prev.terminalLogs,
+        {
+          id: Math.random().toString(36).substr(2, 9),
+          text,
+          type,
+          timestamp: new Date().toLocaleTimeString([], { hour12: false })
+        }
+      ]
+    }));
+  };
+
+  const runProject = async () => {
+    if (activeProject.buildStatus !== 'idle') return;
+    
+    setIsTerminalOpen(true);
+    setActiveProject(prev => ({ ...prev, buildStatus: 'installing', terminalLogs: [] }));
+    
+    addLog('npm install', 'command');
+    addLog('Resolving dependencies...', 'info');
+    await new Promise(r => setTimeout(r, 800));
+    addLog('Fetching packages from registry...', 'info');
+    await new Promise(r => setTimeout(r, 1200));
+    addLog('Added 1432 packages in 4s', 'success');
+    addLog('Audited 1433 packages in 452ms', 'info');
+    
+    await new Promise(r => setTimeout(r, 500));
+    addLog('npm run dev', 'command');
+    setActiveProject(prev => ({ ...prev, buildStatus: 'running' }));
+    
+    addLog('> vite', 'info');
+    await new Promise(r => setTimeout(r, 600));
+    addLog('VITE v6.0.5  ready in 182 ms', 'success');
+    addLog('➜  Local:   http://localhost:5173/', 'info');
+    addLog('➜  Network: use --host to expose', 'info');
+    addLog('➜  press h + enter to show help', 'info');
+  };
+
+  const stopProject = () => {
+    addLog('^C', 'command');
+    addLog('Dev server stopped.', 'warning');
+    setActiveProject(prev => ({ ...prev, buildStatus: 'idle' }));
+  };
 
   const handleSendPrompt = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,14 +137,21 @@ const App: React.FC = () => {
   const handleProjectSelect = async (project: ProjectData) => {
     const fileName = project.files[0] || 'project.zip';
     
-    setActiveProject({ id: project.id, files: {}, status: 'loading' });
+    setActiveProject({ 
+      id: project.id, 
+      files: {}, 
+      status: 'loading', 
+      buildStatus: 'idle', 
+      terminalLogs: [] 
+    });
     setSelectedFilePath(null);
+    setIsTerminalOpen(false);
 
     try {
       const files = await downloadAndUnzip(project.id, fileName);
-      setActiveProject({ id: project.id, files, status: 'ready' });
+      setActiveProject(prev => ({ ...prev, files, status: 'ready' }));
     } catch (err) {
-      setActiveProject({ id: project.id, files: {}, status: 'error' });
+      setActiveProject(prev => ({ ...prev, status: 'error' }));
     }
   };
 
@@ -136,7 +206,7 @@ const App: React.FC = () => {
                 ID: {proj.id}
               </div>
               <div className="text-[10px] text-zinc-500 mt-2 uppercase tracking-widest font-bold flex items-center gap-1.5">
-                <Terminal size={10} /> {proj.files[0] || 'Unknown ZIP'}
+                <TerminalIcon size={10} /> {proj.files[0] || 'Unknown ZIP'}
               </div>
             </button>
           ))}
@@ -186,7 +256,7 @@ const App: React.FC = () => {
                 onSelectFile={setSelectedFilePath} 
               />
               
-              <div className="flex-1 flex flex-col bg-zinc-950 overflow-hidden">
+              <div className="flex-1 flex flex-col bg-zinc-950 overflow-hidden relative">
                 <div className="bg-zinc-900 border-b border-zinc-800 p-3 flex items-center justify-between text-zinc-400 px-6">
                   <div className="flex items-center gap-3 text-xs font-medium uppercase tracking-wider">
                     <Layout size={14} className="text-indigo-400" />
@@ -198,30 +268,90 @@ const App: React.FC = () => {
                       </span>
                     )}
                   </div>
-                  <div className="flex gap-3">
+                  <div className="flex gap-2">
+                    {activeProject.buildStatus === 'idle' ? (
+                      <button 
+                        onClick={runProject}
+                        className="text-[10px] font-bold uppercase tracking-widest bg-emerald-600/10 text-emerald-400 hover:bg-emerald-600 hover:text-white px-4 py-1.5 rounded-lg border border-emerald-600/20 transition-all flex items-center gap-2"
+                      >
+                        <Play size={12} fill="currentColor" /> Run Project
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={stopProject}
+                        className="text-[10px] font-bold uppercase tracking-widest bg-rose-600/10 text-rose-400 hover:bg-rose-600 hover:text-white px-4 py-1.5 rounded-lg border border-rose-600/20 transition-all flex items-center gap-2"
+                      >
+                        <Square size={12} fill="currentColor" /> Stop
+                      </button>
+                    )}
                     <button className="text-[10px] font-bold uppercase tracking-widest bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700 px-4 py-1.5 rounded-lg border border-zinc-700 transition-all flex items-center gap-2">
-                      <ExternalLink size={12} /> Preview Mode
+                      <Download size={12} /> Export to local
                     </button>
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-hidden relative">
-                  {selectedFile ? (
-                    <div className="h-full w-full overflow-auto font-mono text-sm p-8 text-zinc-300 bg-zinc-950 selection:bg-indigo-500/30">
-                      <pre className="whitespace-pre-wrap leading-relaxed">{selectedFile.content}</pre>
-                    </div>
-                  ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-zinc-600 space-y-6">
-                      <div className="relative">
-                        <div className="absolute inset-0 bg-indigo-500 blur-3xl opacity-5 animate-pulse"></div>
-                        <Terminal size={80} className="relative opacity-20 text-indigo-400" />
+                <div className="flex-1 overflow-hidden relative flex flex-col">
+                  <div className="flex-1 overflow-hidden relative">
+                    {selectedFile ? (
+                      <div className="h-full w-full overflow-auto font-mono text-sm p-8 text-zinc-300 bg-zinc-950 selection:bg-indigo-500/30">
+                        <pre className="whitespace-pre-wrap leading-relaxed">{selectedFile.content}</pre>
                       </div>
-                      <div className="text-center">
-                        <p className="text-lg font-semibold text-zinc-400">Select a file to inspect</p>
-                        <p className="text-[10px] uppercase tracking-[0.3em] font-bold opacity-40 mt-2">Environment: Development</p>
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-zinc-600 space-y-6">
+                        <div className="relative">
+                          <div className="absolute inset-0 bg-indigo-500 blur-3xl opacity-5 animate-pulse"></div>
+                          <TerminalIcon size={80} className="relative opacity-20 text-indigo-400" />
+                        </div>
+                        <div className="text-center">
+                          <p className="text-lg font-semibold text-zinc-400">Select a file to inspect</p>
+                          <p className="text-[10px] uppercase tracking-[0.3em] font-bold opacity-40 mt-2">Environment: Virtual FS</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Terminal Simulation */}
+                  <div className={`transition-all duration-300 border-t border-zinc-800 bg-zinc-900 flex flex-col ${isTerminalOpen ? 'h-64' : 'h-10'}`}>
+                    <div 
+                      className="flex items-center justify-between px-4 py-2 cursor-pointer hover:bg-zinc-800 border-b border-zinc-800/50"
+                      onClick={() => setIsTerminalOpen(!isTerminalOpen)}
+                    >
+                      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                        <TerminalIcon size={12} /> Terminal Output
+                        {activeProject.buildStatus !== 'idle' && (
+                           <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse ml-1"></span>
+                        )}
+                      </div>
+                      <div className="text-zinc-500 hover:text-zinc-300 transition-colors">
+                        {isTerminalOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
                       </div>
                     </div>
-                  )}
+                    {isTerminalOpen && (
+                      <div 
+                        ref={terminalRef}
+                        className="flex-1 overflow-y-auto p-4 font-mono text-xs space-y-1 bg-black/40"
+                      >
+                        {activeProject.terminalLogs.length === 0 && (
+                          <div className="text-zinc-700 italic">No output yet. Run the project to see build logs.</div>
+                        )}
+                        {activeProject.terminalLogs.map(log => (
+                          <div key={log.id} className="flex gap-3 animate-in fade-in slide-in-from-left-2 duration-300">
+                            <span className="text-zinc-600 shrink-0 select-none">[{log.timestamp}]</span>
+                            <span className={`
+                              ${log.type === 'command' ? 'text-indigo-400 font-bold' : ''}
+                              ${log.type === 'success' ? 'text-emerald-400' : ''}
+                              ${log.type === 'warning' ? 'text-amber-400' : ''}
+                              ${log.type === 'error' ? 'text-rose-400' : ''}
+                              ${log.type === 'info' ? 'text-zinc-300' : ''}
+                            `}>
+                              {log.type === 'command' && <span className="mr-1">$</span>}
+                              {log.text}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -250,7 +380,7 @@ const App: React.FC = () => {
                   </div>
                   <h3 className="text-3xl font-black text-white mb-4 tracking-tighter">Project Hub</h3>
                   <p className="text-zinc-500 text-sm mb-10 leading-relaxed font-medium">
-                    Connect to remote repositories and inspect Vite + React builds in our high-performance virtual filesystem.
+                    Connect to remote repositories and inspect Vite + React builds. Run build simulations to verify dependencies before local deployment.
                   </p>
                   <div className="h-1 w-16 bg-gradient-to-r from-transparent via-indigo-500 to-transparent mx-auto rounded-full opacity-50"></div>
                 </div>
