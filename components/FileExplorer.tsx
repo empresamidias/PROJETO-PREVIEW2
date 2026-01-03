@@ -8,6 +8,10 @@ interface FileExplorerProps {
   onSelectFile: (path: string) => void;
 }
 
+interface TreeNode {
+  [key: string]: TreeNode | { __file: VirtualFile };
+}
+
 export const FileExplorer: React.FC<FileExplorerProps> = ({ files, onSelectFile }) => {
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
 
@@ -15,11 +19,11 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ files, onSelectFile 
     setExpandedFolders(prev => ({ ...prev, [path]: !prev[path] }));
   };
 
-  const buildTree = () => {
-    const tree: any = {};
+  const buildTree = (): TreeNode => {
+    const tree: TreeNode = {};
     Object.keys(files).forEach(path => {
       const parts = path.split('/');
-      let current = tree;
+      let current: any = tree;
       parts.forEach((part, index) => {
         if (!current[part]) {
           current[part] = index === parts.length - 1 ? { __file: files[path] } : {};
@@ -30,12 +34,13 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ files, onSelectFile 
     return tree;
   };
 
-  const renderTree = (node: any, path: string = '', depth: number = 0) => {
-    return Object.entries(node).map(([key, value]: [string, any]) => {
+  const renderTree = (node: TreeNode, path: string = '', depth: number = 0) => {
+    return Object.entries(node).map(([key, value]) => {
       if (key === '__file') return null;
       
       const fullPath = path ? `${path}/${key}` : key;
-      const isFile = value.__file !== undefined;
+      const fileContainer = value as { __file?: VirtualFile };
+      const isFile = fileContainer.__file !== undefined;
 
       if (isFile) {
         return (
@@ -63,7 +68,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ files, onSelectFile 
             <Folder size={14} className={`shrink-0 ${isExpanded ? 'text-indigo-400' : 'text-zinc-600'}`} />
             <span className="truncate tracking-tight uppercase opacity-80">{key}</span>
           </div>
-          {isExpanded && renderTree(value, fullPath, depth + 1)}
+          {isExpanded && renderTree(value as TreeNode, fullPath, depth + 1)}
         </div>
       );
     });

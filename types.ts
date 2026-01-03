@@ -9,6 +9,7 @@ export interface PromptEntry {
 export interface ProjectData {
   id: string;
   files: string[];
+  readyToRun?: boolean;
 }
 
 export interface VirtualFile {
@@ -31,4 +32,5 @@ export interface ProjectState {
   buildStatus: 'idle' | 'installing' | 'running';
   terminalLogs: TerminalLog[];
   viewMode: 'code' | 'preview';
+  readyToRun: boolean;
 }
